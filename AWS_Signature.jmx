@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<jmeterTestPlan version="1.2" properties="4.0" jmeter="4.0 r1823414">
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.4.1">
   <hashTree>
     <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="Test Plan" enabled="true">
       <stringProp name="TestPlan.comments"></stringProp>
@@ -25,7 +25,7 @@
           </elementProp>
           <elementProp name="aws_host" elementType="Argument">
             <stringProp name="Argument.name">aws_host</stringProp>
-            <stringProp name="Argument.value">uwvfc08bji.execute-api.us-east-2.amazonaws.com</stringProp>
+            <stringProp name="Argument.value">x</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
           <elementProp name="aws_service_name" elementType="Argument">
@@ -35,7 +35,12 @@
           </elementProp>
           <elementProp name="aws_region" elementType="Argument">
             <stringProp name="Argument.name">aws_region</stringProp>
-            <stringProp name="Argument.value">us-east-2</stringProp>
+            <stringProp name="Argument.value">x</stringProp>
+            <stringProp name="Argument.metadata">=</stringProp>
+          </elementProp>
+          <elementProp name="aws_token" elementType="Argument">
+            <stringProp name="Argument.name">aws_token</stringProp>
+            <stringProp name="Argument.value">x</stringProp>
             <stringProp name="Argument.metadata">=</stringProp>
           </elementProp>
         </collectionProp>
@@ -44,11 +49,13 @@
       <CacheManager guiclass="CacheManagerGui" testclass="CacheManager" testname="HTTP Cache Manager" enabled="true">
         <boolProp name="clearEachIteration">false</boolProp>
         <boolProp name="useExpires">true</boolProp>
+        <boolProp name="CacheManager.controlledByThread">false</boolProp>
       </CacheManager>
       <hashTree/>
       <CookieManager guiclass="CookiePanel" testclass="CookieManager" testname="HTTP Cookie Manager" enabled="true">
         <collectionProp name="CookieManager.cookies"/>
         <boolProp name="CookieManager.clearEachIteration">false</boolProp>
+        <boolProp name="CookieManager.controlledByThreadGroup">false</boolProp>
       </CookieManager>
       <hashTree/>
       <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="HTTP Header Manager" enabled="true">
@@ -88,10 +95,10 @@ import java.security.MessageDigest
 import groovy.json.JsonSlurper
 import java.text.SimpleDateFormat
 
-
 //Defined in User Defined Variables
 def access_key = vars.get(&quot;aws_access_key&quot;)
 def secret_key = vars.get(&quot;aws_secret_key&quot;)
+def amzToken = vars.get(&quot;aws_token&quot;)
 def service = vars.get(&quot;aws_service_name&quot;)
 def host = vars.get(&quot;aws_host&quot;)
 def region = vars.get(&quot;aws_region&quot;)
@@ -101,43 +108,41 @@ def method = sampler.getMethod()
 def url = sampler.getUrl()
 def req_path = url.getPath()
 def req_query_string = orderQuery(url)
-def request_parameters = &apos;&apos;;
+def request_parameters = &apos;&apos;
 
 sampler.getArguments().each {arg -&gt;
     request_parameters = arg.getStringValue().substring(1)
 }
 
-//Create the variable x-amz-date 
+//Create the variable x-amz-date
 def now = new Date()
 def amzFormat = new SimpleDateFormat( &quot;yyyyMMdd&apos;T&apos;HHmmss&apos;Z&apos;&quot; )
 def stampFormat = new SimpleDateFormat( &quot;yyyyMMdd&quot; )
-amzFormat.setTimeZone(TimeZone.getTimeZone(&quot;UTC&quot;));  //server timezone
+amzFormat.setTimeZone(TimeZone.getTimeZone(&quot;UTC&quot;))  //server timezone
 def amzDate = amzFormat.format(now)
 def dateStamp = stampFormat.format(now)
 vars.put(&quot;x_amz_date&quot;, amzDate)
 
-
 //Create a Canonical Request
 def canonical_uri = req_path
 def canonical_querystring = req_query_string
-def canonical_headers = &quot;host:&quot; + host + &quot;\n&quot; + &quot;x-amz-date:&quot; + amzDate + &quot;\n&quot;
-def signed_headers = &quot;host;x-amz-date&quot;
+def canonical_headers = &quot;host:&quot; + host + &quot;\n&quot; + &quot;x-amz-date:&quot; + amzDate + &quot;\n&quot; + &quot;x-amz-security-token:&quot; + amzToken + &quot;\n&quot;
+def signed_headers = &quot;host;x-amz-date;x-amz-security-token&quot;
 def payload_hash = getHexDigest(request_parameters)
 def canonical_request = method + &quot;\n&quot; + canonical_uri + &quot;\n&quot; + canonical_querystring + &quot;\n&quot; + canonical_headers + &quot;\n&quot; + signed_headers + &quot;\n&quot; + payload_hash
-
 
 //Create the String to Sign
 def algorithm = &quot;AWS4-HMAC-SHA256&quot;
 def credential_scope = dateStamp + &quot;/&quot; + region + &quot;/&quot; + service + &quot;/&quot; + &quot;aws4_request&quot;
 def hash_canonical_request = getHexDigest(canonical_request)
-def string_to_sign = algorithm + &quot;\n&quot; +  amzDate + &quot;\n&quot; +  credential_scope + &quot;\n&quot; +  hash_canonical_request
+def string_to_sign = algorithm + &quot;\n&quot; + amzDate + &quot;\n&quot; + credential_scope + &quot;\n&quot; + hash_canonical_request
 
 //Calculate the String to Sign
 def signing_key = getSignatureKey(secret_key, dateStamp, region, service)
 def signature = hmac_sha256Hex(signing_key, string_to_sign)
 
 //Add Signing information to Variable
-def authorization_header = algorithm + &quot; &quot; + &quot;Credential=&quot; + access_key + &quot;/&quot; + credential_scope + &quot;, &quot; +  &quot;SignedHeaders=&quot; + signed_headers + &quot;, &quot; + &quot;Signature=&quot; + signature
+def authorization_header = algorithm + &quot; &quot; + &quot;Credential=&quot; + access_key + &quot;/&quot; + credential_scope + &quot;, &quot; + &quot;SignedHeaders=&quot; + signed_headers + &quot;, &quot; + &quot;Signature=&quot; + signature
 vars.put(&quot;aws_authorization&quot;, authorization_header)
 
 
@@ -163,53 +168,52 @@ def getSignatureKey(key, dateStamp, regionName, serviceName) {
 }
 
 def getHexDigest(text) {
-    log.info(&quot;text:&quot;+text)
+    log.info(&quot;text:&quot; + text)
     def md = MessageDigest.getInstance(&quot;SHA-256&quot;)
     md.update(text.getBytes())
     return md.digest().encodeHex()
 }
 
-public static String orderQuery(URL url) throws UnsupportedEncodingException {
+static String orderQuery(URL url) throws UnsupportedEncodingException {
 
-    def orderQueryString = &quot;&quot;;
-    Map&lt;String, String&gt; queryPairs = new LinkedHashMap&lt;&gt;();
-    String queryParams = url.getQuery();
+    def orderQueryString = &quot;&quot;
+    Map&lt;String, String&gt; queryPairs = new LinkedHashMap&lt;&gt;()
+    String queryParams = url.getQuery()
 
     if (queryParams != null) {
-        String[] pairs = queryParams.split(&quot;&amp;&quot;);
-    
+        String[] pairs = queryParams.split(&quot;&amp;&quot;)
         for (String pair : pairs) {
-            int idx = pair.indexOf(&quot;=&quot;);
-            queryPairs.put(URLDecoder.decode(pair.substring(0, idx), &quot;UTF-8&quot;), URLDecoder.decode(pair.substring(idx + 1), &quot;UTF-8&quot;));
+            int idx = pair.indexOf(&quot;=&quot;)
+            queryPairs.put(URLDecoder.decode(pair.substring(0, idx), &quot;UTF-8&quot;), URLDecoder.decode(pair.substring(idx + 1), &quot;UTF-8&quot;))
         }
-        def orderQueryArray = new TreeMap&lt;String, String&gt;(queryPairs);
-        orderQueryString  = urlEncodeUTF8(orderQueryArray)
+        def orderQueryArray = new TreeMap&lt;String, String&gt;(queryPairs)
+        orderQueryString = urlEncodeUTF8(orderQueryArray)
     }
-    return orderQueryString;
+    return orderQueryString
 }
 
-public static String urlEncodeUTF8(String s) {
+static String urlEncodeUTF8(String s) {
     try {
-        return URLEncoder.encode(s, &quot;UTF-8&quot;);
+        return URLEncoder.encode(s, &quot;UTF-8&quot;)
     } catch (UnsupportedEncodingException e) {
-        throw new UnsupportedOperationException(e);
+        throw new UnsupportedOperationException(e)
     }
 }
 
-public static String urlEncodeUTF8(Map&lt;?,?&gt; map) {
-    StringBuilder sb = new StringBuilder();
+static String urlEncodeUTF8(Map&lt;?,?&gt; map) {
+    StringBuilder sb = new StringBuilder()
     for (Map.Entry&lt;?,?&gt; entry : map.entrySet()) {
         if (sb.length() &gt; 0) {
-            sb.append(&quot;&amp;&quot;);
+            sb.append(&quot;&amp;&quot;)
         }
         sb.append(String.format(&quot;%s=%s&quot;,
             urlEncodeUTF8(entry.getKey().toString()),
             urlEncodeUTF8(entry.getValue().toString())
-        ));
+        ))
     }
-    return sb.toString();       
+    return sb.toString()
 }
- </stringProp>
+</stringProp>
       </JSR223PreProcessor>
       <hashTree/>
       <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Thread Group" enabled="true">
@@ -223,6 +227,7 @@ public static String urlEncodeUTF8(Map&lt;?,?&gt; map) {
         <boolProp name="ThreadGroup.scheduler">false</boolProp>
         <stringProp name="ThreadGroup.duration">2400</stringProp>
         <stringProp name="ThreadGroup.delay"></stringProp>
+        <boolProp name="ThreadGroup.same_user_on_next_iteration">true</boolProp>
       </ThreadGroup>
       <hashTree>
         <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET Users AWS HTTP Request " enabled="true">
@@ -281,15 +286,8 @@ public static String urlEncodeUTF8(Map&lt;?,?&gt; map) {
           <hashTree/>
         </hashTree>
         <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="PUT Users AWS HTTP Request " enabled="true">
-          <boolProp name="HTTPSampler.postBodyRaw">true</boolProp>
-          <elementProp name="HTTPsampler.Arguments" elementType="Arguments">
-            <collectionProp name="Arguments.arguments">
-              <elementProp name="" elementType="HTTPArgument">
-                <boolProp name="HTTPArgument.always_encode">false</boolProp>
-                <stringProp name="Argument.value"></stringProp>
-                <stringProp name="Argument.metadata">=</stringProp>
-              </elementProp>
-            </collectionProp>
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" enabled="true">
+            <collectionProp name="Arguments.arguments"/>
           </elementProp>
           <stringProp name="HTTPSampler.domain">${aws_host}</stringProp>
           <stringProp name="HTTPSampler.port"></stringProp>
